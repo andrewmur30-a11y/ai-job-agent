@@ -1,4 +1,4 @@
-# AI Job Agent
+# Nexient - AI Job Agent
 
 ## Goal
 

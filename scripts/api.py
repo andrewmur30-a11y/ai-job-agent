@@ -14,12 +14,12 @@ class EvaluationRequest(BaseModel):
     reasoning: str
     summary: str
     evaluated_at: str
-    run_id: str   # ✅ NEW FIELD
+    run_id: str
 
 
 @app.post("/save-evaluation")
 def create_evaluation(data: EvaluationRequest):
-    save_evaluation(
+    result = save_evaluation(
         job_id=data.job_id,
         overall_score=data.overall_score,
         decision=data.decision,
@@ -28,11 +28,7 @@ def create_evaluation(data: EvaluationRequest):
         reasoning=data.reasoning,
         summary=data.summary,
         evaluated_at=data.evaluated_at,
-        run_id=data.run_id,   # ✅ PASS THROUGH
+        run_id=data.run_id,
     )
 
-    return {
-        "status": "success",
-        "message": "Evaluation saved",
-        "run_id": data.run_id
-    }
+    return result

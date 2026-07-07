@@ -1,24 +1,26 @@
 from scripts.database import get_connection
 
 def get_all_candidates():
+    """
+    Queries the SQLite database to fetch all candidates.
+    Aligned with the updated Canvas schema (using skills/experience instead of profile).
+    """
     conn = get_connection()
+    # Configure row_factory to return results as clean, JSON-serializable dictionaries
+    conn.row_factory = lambda cursor, row: {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
+    
     cursor = conn.cursor()
-    
-    # Select all available columns for all candidates
-    cursor.execute("SELECT id, name, profile, preferred_roles, preferred_location, created_at FROM candidates")
-    rows = cursor.fetchall()
-    
-    # Convert SQLite rows into a clean list of dictionaries for FastAPI
-    candidates = []
-    for row in rows:
-        candidates.append({
-            "id": row[0],
-            "name": row[1],
-            "profile": row[2],
-            "preferred_roles": row[3],
-            "preferred_location": row[4],
-            "created_at": row[5]
-        })
+    try:
+        # Replaced the outdated 'profile' column with 'skills' and 'experience'
+        cursor.execute("""
+            SELECT id, name, skills, experience, preferred_roles, preferred_location, created_at 
+            FROM candidates
+        """)
+        candidates = cursor.fetchall()
+    except Exception as e:
+        candidates = []
+        print(f"Database error in get_all_candidates: {e}")
+    finally:
+        conn.close()
         
-    conn.close()
     return candidates

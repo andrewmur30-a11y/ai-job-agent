@@ -1,0 +1,219 @@
+{
+  "name": "AI Job Agent - Evaluation Pipeline (Ollama Optimized)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "112f03c7-e222-4754-8e5b-a7dce777ddfa",
+      "name": "When clicking \"Execute Workflow\"",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -656,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://host.docker.internal:8000/candidates",
+        "options": {}
+      },
+      "id": "6c7507e0-0973-4e2b-9b0b-20860995cc81",
+      "name": "GET Candidates",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -464,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://host.docker.internal:8000/jobs",
+        "options": {}
+      },
+      "id": "bf375449-2928-48cb-83e8-02f7b059ccf8",
+      "name": "GET All Jobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -464,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "788899e3-e456-4096-b772-22ecca2068b0",
+      "name": "Merge (Multiplex Matrix)",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -240,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst mappedItems = items.map(item => {\n  const candidate = item.json;\n  \n  const candidateId = candidate.id_1 || candidate.id;\n  const candidateName = candidate.name_1 || candidate.name;\n  const candidateSkills = candidate.skills_1 || candidate.skills;\n  const candidateExperience = candidate.experience_1 || candidate.experience;\n  \n  const jobId = candidate.id_2 || candidate.id;\n  const jobTitle = candidate.job_title_2 || candidate.job_title || candidate.title_2;\n  const jobCompany = candidate.company_2 || candidate.company;\n  const jobDesc = candidate.job_description_2 || candidate.job_description || candidate.description_2;\n\n  const promptText = `SYSTEM:\\nYou are an expert recruitment screening assistant. Evaluate the fit between the candidate and the job opening. You must respond with a raw JSON object and nothing else.\\n\\nCANDIDATE PROFILE:\\n- Name: ${candidateName}\\n- Target Skills: ${candidateSkills}\\n- Experience Summary: ${candidateExperience}\\n\\nJOB OPENING DETAILS:\\n- Title: ${jobTitle}\\n- Company: ${jobCompany}\\n- Description/Requirements: ${jobDesc}\\n\\nJSON OUTPUT SCHEMA REQUIREMENT:\\nYou must return a valid JSON object matching this exact key structure:\\n{\\n  \"overall_score\": (0-100 integer representing match quality),\\n  \"decision\": (exactly \"Proceed\", \"Hold\", or \"Reject\"),\\n  \"strengths\": [\"strength 1\", \"strength 2\"],\\n  \"missing_skills\": [\"missing skill 1\", \"missing skill 2\"],\\n  \"reasoning\": \"1-2 sentences justifying the decision and score\",\\n  \"summary\": \"Brief executive summary of candidate fit\"\\n}\\n\\nStrict Constraint: Output raw JSON only. Do not add conversational intro/outro text.`;\n\n  return {\n    json: {\n      ollama_prompt: {\n        model: \"qwen2.5:7b\",\n        messages: [\n          {\n            role: \"system\",\n            content: \"You are a precise, objective screening assistant that outputs strict JSON matching the requested structure.\"\n          },\n          {\n            role: \"user\",\n            content: promptText\n          }\n        ],\n        temperature: 0.15\n      },\n      candidate_database_id: candidateId,\n      job_database_id: jobId\n    }\n  };\n});\n\nreturn mappedItems;"
+      },
+      "id": "f0fba330-b78f-445b-88e0-142f1f01d72e",
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -32,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:11434/v1/chat/completions",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"qwen2.5:7b\",\n  \"messages\": {{ JSON.stringify($json.ollama_prompt.messages) }},\n  \"temperature\": 0.15\n}",
+        "options": {}
+      },
+      "id": "99f574ce-4bb1-4b2f-a21b-2e04967a9cca",
+      "name": "Ollama Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        176,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst parsedResults = items.map((item) => {\n  try {\n    // 1. Extract the raw content\n    const rawContent = item.json?.message?.content || item.json?.choices?.[0]?.message?.content || \"\";\n    \n    if (!rawContent) {\n       throw new Error(\"No content found in Ollama response.\");\n    }\n\n    // 2. Extract JSON using a safer regex that ignores surrounding text\n    // Matches everything between the first '{' and the last '}'\n    const jsonStr = rawContent.substring(rawContent.indexOf(\"{\"), rawContent.lastIndexOf(\"}\") + 1);\n    \n    if (!jsonStr) {\n      throw new Error(\"No JSON structure detected in response.\");\n    }\n    \n    const evaluationData = JSON.parse(jsonStr);\n    \n    return {\n      json: {\n        overall_score: Number(evaluationData.overall_score || 0),\n        decision: evaluationData.decision || \"Hold\",\n        strengths: Array.isArray(evaluationData.strengths) ? evaluationData.strengths : [],\n        missing_skills: Array.isArray(evaluationData.missing_skills) ? evaluationData.missing_skills : [],\n        reasoning: evaluationData.reasoning || \"No reasoning provided.\",\n        summary: evaluationData.summary || \"No summary provided.\",\n        parse_success: true\n      }\n    };\n  } catch (err) {\n    // Return a structured failure object so the workflow can continue\n    return {\n      json: {\n        overall_score: 0,\n        decision: \"Hold\",\n        strengths: [],\n        missing_skills: [],\n        reasoning: `Parsing Error: ${err.message}`,\n        summary: \"Failed to parse LLM response.\",\n        parse_success: false\n      }\n    };\n  }\n});\n\nreturn parsedResults;"
+      },
+      "id": "8149689a-a806-4ee5-af38-e21a0191a87a",
+      "name": "Parse JSON Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        368,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/save-evaluation",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"job_id\": {{ $('Build Prompt').itemMatching($itemIndex).json.job_database_id }},\n  \"candidate_id\": {{ $('Build Prompt').itemMatching($itemIndex).json.candidate_database_id }},\n  \"overall_score\": {{ $json.overall_score }},\n  \"decision\": \"{{ $json.decision }}\",\n  \"strengths\": {{ JSON.stringify($json.strengths) }},\n  \"missing_skills\": {{ JSON.stringify($json.missing_skills) }},\n  \"reasoning\": \"{{ $json.reasoning.replace(/\"/g, '\\\\\"') }}\",\n  \"summary\": \"{{ $json.summary.replace(/\"/g, '\\\\\"') }}\",\n  \"evaluated_at\": \"{{ new Date().toISOString() }}\",\n  \"run_id\": \"{{ $runId }}\"\n}",
+        "options": {}
+      },
+      "id": "df26efd1-96ec-4010-9608-3ece6b6d3abf",
+      "name": "POST Save Evaluation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        576,
+        288
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking \"Execute Workflow\"": {
+      "main": [
+        [
+          {
+            "node": "GET Candidates",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "GET All Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Candidates": {
+      "main": [
+        [
+          {
+            "node": "Merge (Multiplex Matrix)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET All Jobs": {
+      "main": [
+        [
+          {
+            "node": "Merge (Multiplex Matrix)",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge (Multiplex Matrix)": {
+      "main": [
+        [
+          {
+            "node": "Build Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prompt": {
+      "main": [
+        [
+          {
+            "node": "Ollama Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Call": {
+      "main": [
+        [
+          {
+            "node": "Parse JSON Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse JSON Response": {
+      "main": [
+        [
+          {
+            "node": "POST Save Evaluation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "a67d96d7-c905-4386-922f-007ce9a325ed",
+  "meta": {
+    "instanceId": "eb7caf52db8afb10139283a7edf3c49c1ed6e71d662e15eb469eeca6cb765fd2"
+  },
+  "nodeGroups": [],
+  "id": "nXu1lWrTpEo523E0",
+  "tags": []
+}

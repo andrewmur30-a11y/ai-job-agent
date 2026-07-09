@@ -28,7 +28,7 @@
     },
     {
       "parameters": {
-        "url": "http://host.docker.internal:8000/job/1",
+        "url": " http://host.docker.internal:8000/jobs",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -63,7 +63,7 @@
     },
     {
       "parameters": {
-        "jsCode": "return $input.all().map(item => {\n  const candidate = item.json.profile_1 || item.json.profile || '';\n  const title = item.json.job_title_2 || item.json.job_title || '';\n  const comp = item.json.company_2 || item.json.company || '';\n  const loc = item.json.location_2 || item.json.location || '';\n  const empType = item.json.employment_type_2 || item.json.employment_type || '';\n  const sal = item.json.salary_2 || item.json.salary || '';\n  const desc = item.json.job_description_2 || item.json.job_description || '';\n\n  return {\n    json: {\n      ...item.json, \n      // 🎯 Pulls the exact clash-handled integers directly from Input 1 and Input 2\n      candidate_database_id: item.json.id_1, \n      job_database_id: item.json.id_2 || 1,\n      \n      lm_studio_prompt: `Compare this candidate profile against the job description.\\n\\nCandidate Profile:\\n${candidate}\\n\\nJob Title:\\n${title}\\n\\nCompany:\\n${comp}\\n\\nLocation:\\n${loc}\\n\\nEmployment Type:\\n${empType}\\n\\nSalary:\\n${sal}\\n\\nJob Description:\\n${desc}\\n\\nReturn exactly this JSON structure:\\n{\\n\\\"job_title\\\":\\\"string\\\",\\n\\\"overall_score\\\":0,\\n\\\"decision\\\":\\\"Apply|Maybe|Skip\\\",\\n\\\"strengths\\\":[],\\n\\\"missing_skills\\\":[],\\n\\\"reasoning\\\":\\\"string\\\",\\n\\\"summary\\\":\\\"string\\\"\\n}`\n    }\n  };\n});\n"
+        "jsCode": "/* STREAMING_CHUNK:Processing multiplexed candidate and job inputs safely with fallback patterns */\n// Iterate through and output EVERY item in the multiplexed stream\nreturn $input.all().map(item => {\n  const data = item.json;\n\n  // Defensive extraction for Candidate fields (Input 1 -> Primary suffix _1)\n  const candidateId = data.id_1 ?? data.id ?? data.candidate_id;\n  const candidateName = data.name_1 ?? data.name ?? \"Unknown Candidate\";\n  \n  // Safely handle candidate skills if they arrive as arrays, strings, or are missing\n  let candidateSkills = data.skills_1 ?? data.skills;\n  if (Array.isArray(candidateSkills)) {\n    candidateSkills = candidateSkills.join(\", \");\n  } else if (typeof candidateSkills === 'string') {\n    // Keep as string\n  } else {\n    candidateSkills = \"No explicit skills listed\";\n  }\n\n  // Safely handle candidate experience\n  let candidateExperience = data.experience_1 ?? data.experience;\n  if (Array.isArray(candidateExperience)) {\n    candidateExperience = candidateExperience.join(\"\\n\");\n  } else if (typeof candidateExperience === 'string') {\n    // Keep as string\n  } else {\n    candidateExperience = \"No experience description listed\";\n  }\n\n  // Defensive extraction for Job fields (Input 2 -> Primary suffix _2)\n  const jobId = data.id_2 ?? data.job_id ?? 1; // Fallback to 1 if entirely missing\n  const jobTitle = data.title_2 ?? data.title ?? \"Unknown Position\";\n  \n  // Safely handle job requirements\n  let jobRequirements = data.requirements_2 ?? data.requirements;\n  if (Array.isArray(jobRequirements)) {\n    jobRequirements = jobRequirements.join(\"\\n\");\n  } else if (typeof jobRequirements === 'string') {\n    // Keep as string\n  } else {\n    jobRequirements = \"No specific requirements listed\";\n  }\n\n  /* STREAMING_CHUNK:Constructing the LLM evaluation prompt context */\n  // Build the context-rich prompt for Qwen\n  const promptText = `\nYou are a senior technical recruiter and hiring manager. Evaluate the following candidate against the specified target job requirements.\n\n### TARGET JOB:\n- Job ID: ${jobId}\n- Title: ${jobTitle}\n- Requirements: \n${jobRequirements}\n\n### CANDIDATE PROFILE:\n- Candidate ID: ${candidateId}\n- Name: ${candidateName}\n- Key Skills: ${candidateSkills}\n- Professional Experience:\n${candidateExperience}\n\n---\n\n### EVALUATION INSTRUCTIONS:\nAnalyze the candidate's skills and experience against the job requirements.\nProvide your evaluation in a valid, structured JSON format with the following keys:\n1. \"overall_score\": An integer between 0 and 100 representing alignment.\n2. \"decision\": String, strictly one of: \"Proceed\", \"Hold\", \"Reject\".\n3. \"strengths\": An array of strings highlighting matching credentials/skills.\n4. \"missing_skills\": An array of strings highlighting gaps.\n5. \"reasoning\": A robust paragraph justifying your score and decision.\n6. \"summary\": A concise, one-sentence elevator summary.\n\nRespond ONLY with raw JSON. Do not write introductory text, markdown formatting blocks (like \\`\\`\\`json), or conversational filler.\n`;\n\n  /* STREAMING_CHUNK:Structuring payload output for LM Studio and database lookup */\n  // Return formatted cleanly in the required n8n wrapper [{ json: { ... } }]\n  return {\n    json: {\n      lm_studio_prompt: {\n        model: \"qwen2.5-14b-instruct-1m\",\n        messages: [\n          { \n            role: \"system\", \n            content: \"You are a precise, objective screening assistant that outputs strict JSON matching the requested structure.\" \n          },\n          { \n            role: \"user\", \n            content: promptText \n          }\n        ],\n        temperature: 0.15\n      },\n      // Persist critical relational tracking variables downstream for final save step\n      candidate_database_id: candidateId,\n      job_database_id: jobId\n    }\n  };\n});\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -89,8 +89,10 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"model\": \"qwen2.5-14b-instruct-1m\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are an expert recruitment assistant. Your response MUST consist of exactly one valid JSON object and nothing else. Never write explanations, markdown, code fences, or introductory text. Compare the candidate objectively against the job requirements.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($json.lm_studio_prompt) }}\n    }\n  ],\n  \"temperature\": 0.2\n}\n",
-        "options": {}
+        "jsonBody": "={{ $json.lm_studio_prompt }}",
+        "options": {
+          "timeout": 2400000
+        }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
@@ -119,50 +121,8 @@
         "method": "POST",
         "url": "http://host.docker.internal:8000/save-evaluation",
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "job_id",
-              "value": "={{ $('Build Prompt').itemMatching($itemIndex).json.job_database_id || 1 }}\n"
-            },
-            {
-              "name": "overall_score",
-              "value": "={{ Number($json.overall_score) }}"
-            },
-            {
-              "name": "decision",
-              "value": "={{ $json.decision }}"
-            },
-            {
-              "name": "strengths",
-              "value": "={{ Array.isArray($json.strengths) ? $json.strengths : (typeof $json.strengths === 'string' && $json.strengths.trim().startsWith('[') ? JSON.parse($json.strengths) : [$json.strengths]) }}"
-            },
-            {
-              "name": "missing_skills",
-              "value": "={{ Array.isArray($json.missing_skills) ? $json.missing_skills : (typeof $json.missing_skills === 'string' && $json.missing_skills.trim().startsWith('[') ? JSON.parse($json.missing_skills) : [$json.missing_skills]) }}"
-            },
-            {
-              "name": "reasoning",
-              "value": "={{ $json.reasoning }}"
-            },
-            {
-              "name": "summary",
-              "value": "={{ $json.summary }}"
-            },
-            {
-              "name": "evaluated_at",
-              "value": "={{ $now }}"
-            },
-            {
-              "name": "run_id",
-              "value": "={{ $execution.id }}"
-            },
-            {
-              "name": "candidate_id",
-              "value": "={{ $('Build Prompt').itemMatching($itemIndex).json.candidate_database_id }}\n\n"
-            }
-          ]
-        },
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"job_id\": {{ $('Build Prompt').itemMatching($itemIndex).json.job_database_id }},\n  \"candidate_id\": {{ $('Build Prompt').itemMatching($itemIndex).json.candidate_database_id }},\n  \"overall_score\": {{ $json.overall_score }},\n  \"decision\": \"{{ $json.decision }}\",\n  \"strengths\": {{ JSON.stringify($json.strengths) }},\n  \"missing_skills\": {{ JSON.stringify($json.missing_skills) }},\n  \"reasoning\": \"{{ $json.reasoning.replace(/\"/g, '\\\\\"') }}\",\n  \"summary\": \"{{ $json.summary.replace(/\"/g, '\\\\\"') }}\",\n  \"evaluated_at\": \"{{ new Date().toISOString() }}\",\n  \"run_id\": \"{{ $executionId }}\"\n}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -266,7 +226,7 @@
     "binaryMode": "separate",
     "availableInMCP": false
   },
-  "versionId": "5b7aa98e-353d-4800-9154-b6b9a650ab15",
+  "versionId": "1563ba2e-5a13-4a41-a2e6-e9136784bf00",
   "meta": {
     "instanceId": "eb7caf52db8afb10139283a7edf3c49c1ed6e71d662e15eb469eeca6cb765fd2"
   },

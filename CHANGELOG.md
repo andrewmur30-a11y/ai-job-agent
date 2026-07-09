@@ -123,3 +123,79 @@ The architecture is now cleanly separated:
 * Remove dependency on manually seeded job records.
 * Import and normalize jobs from external sources.
 * Prepare the workflow for scheduled and unattended execution.
+
+
+## 2026-07-09
+
+**Current State:** 🚀 **Major Milestone Achieved — Batch Evaluation Engine**
+
+🎯 **Milestone**
+
+* Successfully evolved the evaluation engine from single-job processing into a true **candidate × job batch evaluation engine**.
+* Validated large-scale local execution by processing **75 evaluations (5 candidates × 15 jobs)** in a single workflow run.
+
+---
+
+🟢 **Added**
+
+* New `GET /jobs` endpoint integration for dynamic retrieval of all stored jobs.
+* Candidate × Job matrix generation using the n8n **Multiplex Merge** node.
+* Full batch processing support without hardcoded candidate or job references.
+* Dedicated Ollama prompt payload generation for OpenAI-compatible chat completions.
+* More resilient JSON parsing capable of extracting structured responses from imperfect model output.
+
+---
+
+🔵 **Modified & Refactored**
+
+* Migrated the evaluation workflow from **LM Studio** to **Ollama** as the active inference provider.
+
+* Refactored the workflow into a true evaluation matrix pipeline:
+
+  **GET Candidates → GET Jobs → Multiplex Merge → Build Prompt → Ollama → Parse JSON → Save Evaluation**
+
+* Simplified prompt generation by encapsulating model payload construction inside the Build Prompt node.
+
+* Improved response parsing to tolerate conversational wrappers while still extracting valid JSON.
+
+* Preserved candidate and job lineage throughout workflow execution using `itemMatching($itemIndex)`.
+
+---
+
+🟢 **Working Features**
+
+* Dynamic retrieval of all candidates from SQLite.
+* Dynamic retrieval of all jobs from SQLite.
+* Automatic generation of candidate × job evaluation combinations.
+* Local AI evaluation using Ollama.
+* Structured JSON validation and persistence.
+* Duplicate evaluation prevention based on `candidate_id + job_id`.
+* Successful validation of 75 evaluations in a single execution.
+
+---
+
+📊 **Performance Benchmark**
+
+| Metric             |              Result |
+| ------------------ | ------------------: |
+| Candidates         |                   5 |
+| Jobs               |                  15 |
+| Total Evaluations  |                  75 |
+| Runtime            | 4 minutes 5 seconds |
+| Average Evaluation |       ~3.27 seconds |
+
+Performance optimization has intentionally been deferred until after core functionality is complete.
+
+---
+
+🧠 **Notes**
+
+This milestone transforms the project from a database-driven evaluation workflow into a scalable batch evaluation engine. The orchestration layer is now effectively LLM-provider agnostic, with Ollama serving as the current inference provider through an OpenAI-compatible API. The architecture can support alternative providers, including LM Studio, with minimal workflow changes.
+
+---
+
+🎯 **Next Milestone**
+
+* Implement Candidate Profile Fingerprints to avoid unnecessary re-evaluations when candidate data has not changed.
+* Extend fingerprinting to job descriptions to enable selective re-evaluation when job requirements change.
+* Introduce evaluation versioning to support reproducible AI assessments across future model and prompt updates.

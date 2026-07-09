@@ -1,6 +1,18 @@
+<<<<<<< HEAD
 # AI Job Agent
 
 > **A local-first AI recruitment platform that evaluates candidates against job opportunities using a modular, database-driven architecture.**
+=======
+# 🤖 AI Job Agent
+The repository doesn't match the planned layout, yet
+> **A local-first AI recruitment automation platform built with FastAPI, n8n, SQLite, and a locally hosted Large Language Model.**
+
+
+
+
+
+\
+>>>>>>> 78f4d97fe40e175d55617ed9f7b5686a2550b6d7
 
 ---
 

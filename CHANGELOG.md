@@ -1,201 +1,327 @@
-## 2026-07-03
+# Changelog
 
-### Completed
+All notable changes to the AI Job Agent project will be documented in this file.
+
+---
+
+# 2026-07-03
+
+## ✅ Completed
+
 - Restored n8n workflow
 - Connected LM Studio
 - Added candidate profile input
 - Exported workflow
-- Pushed to GitHub
+- Pushed project to GitHub
 
-### Next
+## 🎯 Next
+
 - Improve structured JSON output
 - Design SQLite schema
 
+---
 
-## 2026-07-04
+# 2026-07-04
 
-Current State: Under Construction
+## 🚧 Current State
 
-🟢 Added
-FastAPI service layer for evaluation handling
-HTTP endpoint for saving evaluation results (/save-evaluation)
-SQLite integration for persistent storage of evaluations
-n8n → FastAPI integration via HTTP Request node
-End-to-end automation pipeline (n8n → API → Python → DB)
+**Under Construction**
 
-🟢 Working Features
-Candidate/job evaluation generation via AI workflow
-Structured JSON validation using Pydantic models
-Successful database writes confirmed in SQLite
-Swagger UI testing for API endpoints (/docs)
+## 🟢 Added
 
-🟡 In Progress (Under Construction)
-Evaluation deduplication logic (run_id-based idempotency)
-Full guardrail enforcement across workflow components
-LM Studio integration for dynamic AI-generated evaluations
-Schema hardening for production-grade stability
+- FastAPI service layer for evaluation handling
+- HTTP endpoint for saving evaluation results (`POST /save-evaluation`)
+- SQLite integration for persistent storage of evaluations
+- n8n → FastAPI integration via HTTP Request node
+- End-to-end automation pipeline
 
-🧠 Notes
-System architecture has been successfully validated end-to-end
-Current focus is incremental stabilization before introducing full LLM automation
-Core pipeline is functional and ready for next integration phase
+  ```
+  n8n → FastAPI → Python → SQLite
+  ```
 
-## 2026-07-06
+## 🟢 Working Features
 
-**Current State:** 🚀 **Major Milestone Achieved — Database-Driven Evaluation Engine**
+- Candidate/job evaluation generation via AI workflow
+- Structured JSON validation using Pydantic models
+- Successful database writes confirmed in SQLite
+- Swagger UI testing for API endpoints (`/docs`)
 
-🎯 **Milestone**
+## 🟡 In Progress
 
-* Successfully transitioned the evaluation pipeline from a proof-of-concept with hardcoded data to a fully database-driven workflow.
-* Evaluation engine now supports dynamic candidate retrieval, batch processing, and enterprise-grade duplicate protection.
+- Evaluation deduplication logic (run_id idempotency)
+- Full guardrail enforcement across workflow components
+- LM Studio integration for dynamic AI-generated evaluations
+- Schema hardening for production-grade stability
+
+## 🧠 Notes
+
+System architecture has been successfully validated end-to-end.
+
+Current focus is incremental stabilization before introducing full LLM automation.
+
+Core pipeline is functional and ready for the next integration phase.
 
 ---
 
-🟢 **Added**
+# 2026-07-06
 
-* New FastAPI endpoint (`/candidates`) for retrieving collections of stored candidate records.
-* FastAPI read endpoints enabling database-backed candidate and job retrieval.
-* Dedicated database helper modules for candidate queries.
-* Database seed scripts for candidates and jobs to simplify development and testing.
-* `candidate_id` tracking column added to the `evaluations` table.
-* Cross-node lineage tracking using `itemMatching($itemIndex)` to preserve record relationships throughout n8n execution.
+## 🚀 Major Milestone Achieved
 
----
+### Database-Driven Evaluation Engine
 
-🔵 **Modified & Refactored**
+## 🎯 Milestone
 
-* Upgraded `scripts/api.py` and Pydantic models to support `candidate_id` validation.
+Successfully transitioned the evaluation pipeline from a proof-of-concept with hardcoded data into a fully database-driven workflow.
 
-* Permanently removed the hardcoded **Set** node from the n8n workflow.
+The evaluation engine now supports dynamic candidate retrieval, batch processing, and enterprise-grade duplicate protection.
 
-* Refactored the workflow into a modular pipeline:
+## 🟢 Added
 
-  **GET Candidates → GET Job → Multiplex Merge → Build Prompt → LM Studio → Save Evaluation**
+- FastAPI endpoint: `GET /candidates`
+- Database-backed candidate and job retrieval endpoints
+- Database helper modules for candidate queries
+- Candidate and job seed scripts
+- `candidate_id` tracking column added to the `evaluations` table
+- Cross-node lineage tracking using `itemMatching($itemIndex)`
 
-* Introduced a dedicated **Build Prompt** node, separating prompt construction from the LM Studio request.
+## 🔵 Modified & Refactored
 
-* Updated Merge node clash handling (`id_1` / `id_2`) to preserve candidate and job primary keys.
+- Updated `scripts/api.py` and Pydantic models for `candidate_id` validation
+- Removed the hardcoded Set node from the n8n workflow
+- Refactored workflow into:
 
-* Replaced `run_id` idempotency with business-level duplicate protection using the `candidate_id + job_id` combination.
+  ```
+  GET Candidates
+      ↓
+  GET Job
+      ↓
+  Multiplex Merge
+      ↓
+  Build Prompt
+      ↓
+  LM Studio
+      ↓
+  Save Evaluation
+  ```
 
-* Improved prompt serialization using `JSON.stringify()` to eliminate string formatting and line-break parsing issues.
+- Added a dedicated Build Prompt node
+- Updated Merge node clash handling (`id_1` / `id_2`)
+- Replaced `run_id` idempotency with `candidate_id + job_id`
+- Improved prompt serialization using `JSON.stringify()`
 
----
+## 🟢 Working Features
 
-🟢 **Working Features**
+- Fully database-driven evaluation pipeline
+- Dynamic candidate retrieval
+- Dynamic job retrieval
+- Batch evaluation
+- Enterprise-grade duplicate prevention
+- Dynamic prompt generation
+- Successful end-to-end validation
 
-* Fully database-driven evaluation pipeline.
-* Dynamic candidate retrieval from SQLite.
-* Dynamic job retrieval from SQLite.
-* Batch evaluation of multiple candidates in a single execution.
-* Enterprise-grade duplicate prevention.
-* Prompt generation built dynamically from live database records.
-* Successful end-to-end workflow validation:
-  **SQLite → FastAPI → n8n → LM Studio → SQLite**
-* Swagger API endpoints successfully tested and validated.
+  ```
+  SQLite
+      ↓
+  FastAPI
+      ↓
+  n8n
+      ↓
+  LM Studio
+      ↓
+  SQLite
+  ```
 
----
+- Swagger API validation
 
-🟡 **Current Limitations**
+## 🟡 Current Limitations
 
-* Candidate records are currently seeded manually.
-* Job records are currently seeded manually.
-* Workflow evaluates a single selected job at a time.
-* Automated job ingestion has not yet been implemented.
+- Candidate records seeded manually
+- Job records seeded manually
+- Single selected job evaluated per workflow execution
+- Automated job ingestion not yet implemented
 
----
+## 🧠 Notes
 
-🧠 **Notes**
-This milestone marks the transition from a prototype workflow into a reusable evaluation engine. All hardcoded candidate and job data has been removed from the evaluation path, allowing the system to process live database records while maintaining referential integrity and preventing duplicate evaluations.
+This milestone transitions the project from a prototype into a reusable evaluation engine.
 
-The architecture is now cleanly separated:
+Architecture responsibilities are now clearly separated:
 
-* **SQLite** manages persistent data.
-* **FastAPI** provides the data and persistence API.
-* **n8n** orchestrates workflow execution.
-* **LM Studio** performs AI reasoning.
+- SQLite manages persistent data.
+- FastAPI exposes the data API.
+- n8n orchestrates execution.
+- LM Studio performs AI reasoning.
 
----
+## 🎯 Next Milestone
 
-🎯 **Next Milestone**
-
-* Build the automated job ingestion pipeline.
-* Remove dependency on manually seeded job records.
-* Import and normalize jobs from external sources.
-* Prepare the workflow for scheduled and unattended execution.
-
-
-## 2026-07-09
-
-**Current State:** 🚀 **Major Milestone Achieved — Batch Evaluation Engine**
-
-🎯 **Milestone**
-
-* Successfully evolved the evaluation engine from single-job processing into a true **candidate × job batch evaluation engine**.
-* Validated large-scale local execution by processing **75 evaluations (5 candidates × 15 jobs)** in a single workflow run.
-
----
-
-🟢 **Added**
-
-* New `GET /jobs` endpoint integration for dynamic retrieval of all stored jobs.
-* Candidate × Job matrix generation using the n8n **Multiplex Merge** node.
-* Full batch processing support without hardcoded candidate or job references.
-* Dedicated Ollama prompt payload generation for OpenAI-compatible chat completions.
-* More resilient JSON parsing capable of extracting structured responses from imperfect model output.
-
----
-
-🔵 **Modified & Refactored**
-
-* Migrated the evaluation workflow from **LM Studio** to **Ollama** as the active inference provider.
-
-* Refactored the workflow into a true evaluation matrix pipeline:
-
-  **GET Candidates → GET Jobs → Multiplex Merge → Build Prompt → Ollama → Parse JSON → Save Evaluation**
-
-* Simplified prompt generation by encapsulating model payload construction inside the Build Prompt node.
-
-* Improved response parsing to tolerate conversational wrappers while still extracting valid JSON.
-
-* Preserved candidate and job lineage throughout workflow execution using `itemMatching($itemIndex)`.
+- Build automated job ingestion
+- Remove manual job seeding
+- Normalize imported jobs
+- Prepare unattended scheduled execution
 
 ---
 
-🟢 **Working Features**
+# 2026-07-09
 
-* Dynamic retrieval of all candidates from SQLite.
-* Dynamic retrieval of all jobs from SQLite.
-* Automatic generation of candidate × job evaluation combinations.
-* Local AI evaluation using Ollama.
-* Structured JSON validation and persistence.
-* Duplicate evaluation prevention based on `candidate_id + job_id`.
-* Successful validation of 75 evaluations in a single execution.
+## 🚀 Major Milestone Achieved
+
+### Batch Evaluation Engine
+
+## 🎯 Milestone
+
+Successfully evolved the evaluation engine from single-job processing into a true Candidate × Job batch evaluation engine.
+
+Validated 75 evaluations (5 candidates × 15 jobs) in one execution.
+
+## 🟢 Added
+
+- Dynamic `GET /jobs` integration
+- Candidate × Job matrix generation
+- Full batch processing
+- Ollama prompt generation
+- Robust JSON parsing
+
+## 🔵 Modified & Refactored
+
+Migrated the workflow from LM Studio to Ollama.
+
+New workflow:
+
+```
+GET Candidates
+      ↓
+GET Jobs
+      ↓
+Multiplex Merge
+      ↓
+Build Prompt
+      ↓
+Ollama
+      ↓
+Parse JSON
+      ↓
+Save Evaluation
+```
+
+Additional improvements:
+
+- Simplified prompt generation
+- Improved JSON parsing
+- Preserved candidate/job lineage using `itemMatching($itemIndex)`
+
+## 🟢 Working Features
+
+- Dynamic candidate retrieval
+- Dynamic job retrieval
+- Candidate × Job matrix generation
+- Local AI evaluation
+- Structured JSON validation
+- Duplicate prevention (`candidate_id + job_id`)
+- 75 successful evaluations
+
+## 📊 Performance Benchmark
+
+| Metric | Result |
+|---------|--------|
+| Candidates | 5 |
+| Jobs | 15 |
+| Total Evaluations | 75 |
+| Runtime | 4 minutes 5 seconds |
+| Average Evaluation | ~3.27 seconds |
+
+Performance optimization has intentionally been deferred until core functionality is complete.
+
+## 🧠 Notes
+
+The architecture is now LLM-provider agnostic.
+
+Current provider:
+
+- Ollama
+
+Future providers could include:
+
+- LM Studio
+- OpenAI-compatible APIs
+
+## 🎯 Next Milestone
+
+- Candidate Profile Fingerprints
+- Job Fingerprints
+- Evaluation versioning
 
 ---
 
-📊 **Performance Benchmark**
+# 2026-07-11
 
-| Metric             |              Result |
-| ------------------ | ------------------: |
-| Candidates         |                   5 |
-| Jobs               |                  15 |
-| Total Evaluations  |                  75 |
-| Runtime            | 4 minutes 5 seconds |
-| Average Evaluation |       ~3.27 seconds |
+## 🚀 Major Milestone Achieved
 
-Performance optimization has intentionally been deferred until after core functionality is complete.
+### Local Document Ingestion & Cryptographic Hashing
 
----
+## 🎯 Milestone
 
-🧠 **Notes**
+Built a complete local ingestion pipeline supporting PDF and Word resume parsing.
 
-This milestone transforms the project from a database-driven evaluation workflow into a scalable batch evaluation engine. The orchestration layer is now effectively LLM-provider agnostic, with Ollama serving as the current inference provider through an OpenAI-compatible API. The architecture can support alternative providers, including LM Studio, with minimal workflow changes.
+Implemented identity-anchored email resolution and SHA-256 profile fingerprinting to detect meaningful profile changes while preventing unnecessary LLM evaluations.
 
----
+## 🟢 Added
 
-🎯 **Next Milestone**
+- `POST /candidates/import`
+- Native PDF parser (`extract_text_from_pdf`)
+- Native DOCX parser (`extract_text_from_docx`)
+- `scripts/hashing_utils.py`
+- `scripts/save_candidate.py`
+- `scripts/test_resume_parser.py`
+- `scripts/test_pdf_upload.py`
+- `scripts/test_api_endpoints.py`
 
-* Implement Candidate Profile Fingerprints to avoid unnecessary re-evaluations when candidate data has not changed.
-* Extend fingerprinting to job descriptions to enable selective re-evaluation when job requirements change.
-* Introduce evaluation versioning to support reproducible AI assessments across future model and prompt updates.
+## 🔵 Modified & Refactored
+
+- Updated `scripts/seed_database.py`
+- Rebuilt `schema.sql` with WAL mode and busy timeout
+- Hardened FastAPI routes
+- Updated:
+
+  - `README.md`
+  - `docs/architecture.md`
+  - `docs/project_todo_list.md`
+
+## 🟢 Working Features
+
+- Local PDF/Word extraction
+- Local Qwen2.5 parsing through Ollama
+- Email-based identity resolution
+- SHA-256 candidate fingerprinting
+- Interactive Swagger uploads
+- Full regression test suite
+
+## 🧠 Notes
+
+This update bridges raw resume documents and persistent candidate records.
+
+The pipeline now:
+
+```
+Resume
+    ↓
+Text Extraction
+    ↓
+Local LLM Structuring
+    ↓
+SHA-256 Fingerprint
+    ↓
+SQLite Save / Update
+```
+
+Development remains:
+
+- 100% local
+- Zero API costs
+- Fully private
+
+## 🎯 Next Milestone
+
+- Begin Phase 2
+- Playwright Job Scraper Engine
+- Job normalization
+- Job fingerprinting
+- Manual Job Injection endpoints

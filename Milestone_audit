@@ -1,0 +1,83 @@
+Milestone Audit - July 11, 2026
+
+This document evaluates our progress against the technical milestones set on 2026-07-09 as we prepare to transition into Phase 2 of the AI Job Agent platform.
+
+Milestone 1: Implement Candidate Profile Fingerprints
+
+Goal: Avoid unnecessary re-evaluations when candidate data has not changed.
+Status: 🟡 PARTIALLY ACHIEVED (Backend Active, n8n Integration Pending)
+
+What Is Done:
+
+The Math & Crypto: Created generate_profile_fingerprint in scripts/hashing_utils.py which computes:
+
+
+$$\text{Fingerprint} = \text{SHA256}(\text{Sorted Skills} \mathbin{\Vert} \text{Cleaned Experience} \mathbin{\Vert} \text{Sorted Preferred Roles})$$
+
+The Database Schema: Added profile_fingerprint to the candidates table and candidate_snapshot_fingerprint to the evaluations table.
+
+The Ingestion Check: Updated scripts/save_candidate.py. When a candidate resume is uploaded, it generates this hash. If the database finds a matching email with the same hash, it skips the write entirely, preventing redundant database updates.
+
+What Is Missing (The "Last Mile"):
+
+n8n Payloads: The n8n workflow currently retrieves candidate data but does not pass the candidate's profile_fingerprint along to /save-evaluation in its final POST request.
+
+API Validation: api.py and its Pydantic EvaluationRequest model do not yet expect or validate this fingerprint.
+
+Milestone 2: Extend Fingerprinting to Job Descriptions
+
+Goal: Enable selective re-evaluation when job requirements change.
+Status: 🟡 PARTIALLY ACHIEVED (Basic Uniqueness Locked, Semantic Requirements Pending)
+
+What Is Done:
+
+Unique Identification: Added job_fingerprint to the jobs database schema.
+
+Scraper Guard: Built calculate_job_fingerprint(title, company, location) in seed_database.py. This ensures we do not import duplicate jobs from external scraper engines.
+
+What Is Missing (The "Last Mile"):
+
+Semantic Requirements Tracking: The hash is currently generated using only title + company + location to prevent duplicate listings. To detect when a recruiter changes the actual requirements of an active job, we must expand the hash:
+
+
+$$\text{Fingerprint}_{\text{job}} = \text{SHA256}(\text{Title} \mathbin{\Vert} \text{Company} \mathbin{\Vert} \text{Requirements JSON})$$
+
+Delta Matching Trigger: We have not yet written the endpoint or DB trigger to locate historical evaluations matching a changed job fingerprint and flag them for re-evaluation.
+
+Milestone 3: Introduce Evaluation Versioning
+
+Goal: Support reproducible AI assessments across future model and prompt updates.
+Status: 🔴 PENDING (Conceptualized in ADR, Not Coded)
+
+What Is Done:
+
+Architectural Blueprint: Outlined the requirements in docs/adr_re_evaluation_strategy.md. We designed the schemas to support reproducible evaluations.
+
+What Is Missing:
+
+Database Updates: We need to add columns to the evaluations table:
+
+model_version (e.g., "qwen2.5:7b")
+
+prompt_version (e.g., "v1.0")
+
+Tracking Logic: We need to pass these values dynamically from our n8n pipeline. If you update your prompt in n8n, the system should recognize the version mismatch and execute a re-evaluation despite candidate/job fingerprints matching.
+
+Immediate Next Steps to Complete Milestones
+
+To close out these milestones completely before shifting to the scraper, we should:
+
+Update api.py's EvaluationRequest model to accept candidate_snapshot_fingerprint and job_fingerprint.
+
+Update the n8n Build Prompt and POST Save Evaluation nodes to pass these fingerprints.
+
+Hardcode model and prompt version tracking into the n8n execution variables.
+
+To achieve 100% completion of Milestones 1, 2, and 3, we will build and roll out the following structural updates:
+
+- Database Schema Migration (scripts/db_migrations.py): A migration runner that updates your active database to support job fingerprint snapshots, model versions, and prompt versions without losing your current seed data.
+- Master Schema Alignment (schema.sql): Syncs the repository master schema to match our target design.
+- Semantic Hashing Upgrades (scripts/hashing_utils.py): Expands fingerprinting on the job side to track changes to job requirements.
+- Data Retrieval Upgrades (scripts/get_candidate.py, etc.): Ensures candidate and job fingerprints are exposed to n8n via the API.
+- FastAPI & Save Evaluation Logic (scripts/api.py & scripts/save_evaluation.py): Updates Pydantic validation schemas and inserts advanced state-matching upsert gates.
+- n8n Workflow Configuration (workflows/evaluation_pipeline.json): A complete, exportable JSON file ready to copy directly into your local n8n workflow canvas.

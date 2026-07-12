@@ -1,219 +1,247 @@
-import json
 import os
+import json
 import sqlite3
-from scripts.database import get_connection
+import hashlib
+from datetime import datetime
 
-def recreate_and_seed_database():
+# Resolve the database path
+DB_PATH = os.path.join("database", "job_agent.db")
+
+def calculate_local_profile_fingerprint(skills: list, experience: str, roles: list) -> str:
     """
-    Clears the existing database, creates tables with the correct up-to-date schema,
-    and populates it with 8 realistic candidates and 20 diverse job postings.
+    Computes a deterministic SHA-256 fingerprint representing candidate state.
+    Used as a fallback in case the scripts.hashing_utils import fails.
     """
-    conn = get_connection()
+    normalized_skills = sorted([s.strip().lower() for s in skills])
+    normalized_roles = sorted([r.strip().lower() for r in roles])
+    normalized_exp = experience.strip().lower()
+    payload = f"{normalized_skills}|{normalized_exp}|{normalized_roles}"
+    return hashlib.sha256(payload.encode('utf-8')).hexdigest()
+
+def calculate_job_fingerprint(title: str, company: str, location: str) -> str:
+    """
+    Computes a SHA-256 fingerprint representing unique job parameters
+    to prevent duplication across scraper ingestion engines.
+    """
+    normalized_title = title.strip().lower()
+    normalized_company = company.strip().lower() if company else ""
+    normalized_location = location.strip().lower() if location else ""
+    payload = f"{normalized_title}|{normalized_company}|{normalized_location}"
+    return hashlib.sha256(payload.encode('utf-8')).hexdigest()
+
+try:
+    from scripts.hashing_utils import generate_profile_fingerprint
+except ImportError:
+    # Use our bulletproof local fallback function
+    generate_profile_fingerprint = calculate_local_profile_fingerprint
+
+def seed_database():
+    print(f"Connecting to database at: {DB_PATH}")
+    
+    # Ensure database directory exists
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir)
+
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    print("Initializing SQLite schema...")
-    
-    # Drop existing tables to ensure schema modifications (like adding 'skills') are fully applied
-    print("Dropping old tables to enforce updated schema rules...")
-    cursor.execute("DROP TABLE IF EXISTS evaluations")
-    cursor.execute("DROP TABLE IF EXISTS candidates")
-    cursor.execute("DROP TABLE IF EXISTS jobs")
-    conn.commit()
+    try:
+        # Enable foreign key support
+        cursor.execute("PRAGMA foreign_keys = ON;")
 
-    # Create tables with correct column configurations
-    print("Creating tables with updated schemas...")
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS candidates (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            skills TEXT,
-            experience TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS jobs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            requirements TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS evaluations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            job_id INTEGER NOT NULL,
-            candidate_id INTEGER NOT NULL,
-            overall_score INTEGER,
-            decision TEXT,
-            strengths TEXT,
-            missing_skills TEXT,
-            reasoning TEXT,
-            summary TEXT,
-            evaluated_at TEXT,
-            run_id TEXT
-        )
-    """)
-    conn.commit()
+        print("Clearing historical seed data from tables...")
+        cursor.execute("DELETE FROM applications;")
+        cursor.execute("DELETE FROM evaluations;")
+        cursor.execute("DELETE FROM candidates;")
+        cursor.execute("DELETE FROM jobs;")
+        
+        # Reset autoincrement keys so testing IDs always start cleanly at 1
+        cursor.execute("DELETE FROM sqlite_sequence WHERE name='candidates';")
+        cursor.execute("DELETE FROM sqlite_sequence WHERE name='jobs';")
+        cursor.execute("DELETE FROM sqlite_sequence WHERE name='evaluations';")
+        cursor.execute("DELETE FROM sqlite_sequence WHERE name='applications';")
 
-    print("Generating seed candidate data...")
-    candidates = [
-        {
-            "name": "Alex Carter",
-            "skills": json.dumps(["Python", "PyTorch", "TensorFlow", "Scikit-Learn", "FastAPI", "SQL", "Docker"]),
-            "experience": "AI & ML Engineer with 4 years of experience building predictive models, optimizing neural networks, and deploying robust NLP and computer vision pipelines using FastAPI and Docker."
-        },
-        {
-            "name": "Sarah Jenkins",
-            "skills": json.dumps(["React", "TypeScript", "Tailwind CSS", "Next.js", "Redux Toolkit", "Jest", "Git"]),
-            "experience": "Senior Frontend Engineer specializing in interactive dashboard architectures, modern state-management, and high-performance Web-Core Vitals optimization using Next.js."
-        },
-        {
-            "name": "Marcus Vance",
-            "skills": json.dumps(["AWS", "Kubernetes", "Docker", "Terraform", "GitHub Actions", "Python", "Bash"]),
-            "experience": "DevOps & Cloud Engineer with 6 years of experience provisioning multi-region AWS architectures via Terraform, maintaining production EKS clusters, and designing automated CI/CD pipelines."
-        },
-        {
-            "name": "Emily Zhao",
-            "skills": json.dumps(["Node.js", "Express", "Python", "PostgreSQL", "Redis", "GraphQL", "AWS"]),
-            "experience": "Backend Developer with 3 years of experience writing high-throughput RESTful and GraphQL APIs, optimizing relational queries, and configuring Redis caching layer structures."
-        },
-        {
-            "name": "David Kross",
-            "skills": json.dumps(["Pentesting", "OWASP Top 10", "Python", "Wireshark", "Metasploit", "Linux", "Burp Suite"]),
-            "experience": "Cybersecurity Specialist and Ethical Hacker focusing on penetration testing, threat modeling, security-focused code review, and remediation planning for enterprise web applications."
-        },
-        {
-            "name": "Samantha Miller",
-            "skills": json.dumps(["Apache Spark", "Python", "SQL", "Airflow", "Snowflake", "Databricks", "AWS"]),
-            "experience": "Data Engineer with 5 years of experience building big data ETL pipelines, running distributed queries in Spark, and managing pipeline workflows using Apache Airflow."
-        },
-        {
-            "name": "John Doe",
-            "skills": json.dumps(["Python", "HTML", "CSS", "SQL", "Git", "Django"]),
-            "experience": "Junior Python Developer seeking an entry-level backend position. Familiar with basic Django architectures, REST principles, and writing fundamental relational database queries."
-        },
-        {
-            "name": "Clara Barton",
-            "skills": json.dumps(["Product Strategy", "Agile Roadmap", "Jira", "User Research", "A/B Testing", "Figma"]),
-            "experience": "Senior Product Manager with 8 years of experience leading cross-functional design and engineering teams to launch enterprise SaaS features, manage roadmaps, and analyze user behavior."
-        }
-    ]
+        print("Seeding candidates table with realistic profiles...")
+        
+        candidates_raw = [
+            {
+                "org_id": "default_org",
+                "name": "Andrew Murray",
+                "email": "andrew.murray@nexient.ai",
+                "skills": ["Python", "FastAPI", "SQLite", "n8n", "Docker", "Machine Learning", "LLMs", "Git"],
+                "experience": "Senior Backend Engineer with 5 years of experience building integration pipelines, automating workflows with n8n, and deploying FastAPI web services.",
+                "preferred_roles": ["Backend Engineer", "Integration Specialist", "AI Automation Engineer"],
+                "preferred_location": "Remote, Hybrid"
+            },
+            {
+                "org_id": "default_org",
+                "name": "Jane Doe",
+                "email": "jane.doe@pixelcraft.io",
+                "skills": ["React", "TypeScript", "Tailwind CSS", "Next.js", "Redux", "Jest", "Vercel"],
+                "experience": "Frontend developer specialized in creating accessible, responsive UI/UX experiences. Proven experience in single-file React configurations and Tailwind animations.",
+                "preferred_roles": ["Frontend Engineer", "UI/UX Engineer", "React Developer"],
+                "preferred_location": "Remote"
+            },
+            {
+                "org_id": "default_org",
+                "name": "Marcus Vance",
+                "email": "marcus.vance@coreai.tech",
+                "skills": ["Python", "PyTorch", "Hugging Face", "LangChain", "Vector Databases", "FastAPI", "SQL"],
+                "experience": "AI Core Engineer focused on fine-tuning open-source models (Llama, Qwen) and optimizing retrieval-augmented generation (RAG) loops for enterprise document search.",
+                "preferred_roles": ["AI Engineer", "LLM Solutions Architect", "ML Engineer"],
+                "preferred_location": "Remote, Onsite"
+            },
+            {
+                "org_id": "default_org",
+                "name": "Sarah Connor",
+                "email": "sconnor@cyberdyne.org",
+                "skills": ["AWS", "Kubernetes", "Docker", "Terraform", "CI/CD", "Linux", "Bash", "Prometheus"],
+                "experience": "DevOps and Infrastructure Engineer specialized in orchestrating scalable microservice runtimes and setting up automated CI/CD monitoring dashboards.",
+                "preferred_roles": ["DevOps Engineer", "SRE", "Cloud Infrastructure Specialist"],
+                "preferred_location": "Remote, Hybrid"
+            },
+            {
+                "org_id": "default_org",
+                "name": "Elena Rostova",
+                "email": "elena.rostova@productlabs.co",
+                "skills": ["Product Management", "Agile", "Scrum", "Jira", "User Research", "A/B Testing", "Figma"],
+                "experience": "Technical Product Manager with a background in software engineering. Skilled at translating LLM capabilities into concrete, high-conversion product features.",
+                "preferred_roles": ["Technical Product Manager", "Product Owner"],
+                "preferred_location": "Remote"
+            }
+        ]
 
-    for c in candidates:
-        cursor.execute(
-            "INSERT INTO candidates (name, skills, experience) VALUES (?, ?, ?)",
-            (c["name"], c["skills"], c["experience"])
-        )
-    conn.commit()
-    print(f"Successfully seeded {len(candidates)} candidates.")
+        for cand in candidates_raw:
+            # Dynamically calculate the cryptographic state fingerprint
+            fingerprint = generate_profile_fingerprint(
+                skills=cand["skills"],
+                experience=cand["experience"],
+                roles=cand["preferred_roles"]
+            )
+            
+            cursor.execute("""
+                INSERT INTO candidates (
+                    organization_id, name, email, skills, experience, 
+                    preferred_roles, preferred_location, profile_fingerprint, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """, (
+                cand["org_id"],
+                cand["name"],
+                cand["email"],
+                json.dumps(cand["skills"]),
+                cand["experience"],
+                json.dumps(cand["preferred_roles"]),
+                cand["preferred_location"],
+                fingerprint,
+                datetime.now().isoformat()
+            ))
 
-    print("Generating seed jobs listing data...")
-    jobs = [
-        {
-            "title": "Machine Learning Engineer",
-            "requirements": json.dumps(["Python", "PyTorch", "TensorFlow", "FastAPI", "Experience deploying models in production", "SQL"])
-        },
-        {
-            "title": "Senior Frontend React Engineer",
-            "requirements": json.dumps(["React", "TypeScript", "Tailwind CSS", "Next.js", "Experience optimizing frontend core web vitals"])
-        },
-        {
-            "title": "DevOps Cloud Engineer",
-            "requirements": json.dumps(["AWS", "Kubernetes", "Terraform", "Docker", "CI/CD toolchains like GitHub Actions"])
-        },
-        {
-            "title": "Python Backend Developer",
-            "requirements": json.dumps(["Python", "FastAPI", "SQL", "PostgreSQL", "Redis caching patterns", "REST API architecture"])
-        },
-        {
-            "title": "Security Engineer",
-            "requirements": json.dumps(["OWASP Top 10 knowledge", "Application penetration testing", "Python", "Burp Suite", "Security auditing"])
-        },
-        {
-            "title": "Senior Data Engineer",
-            "requirements": json.dumps(["Apache Spark", "Airflow orchestration", "Snowflake or BigQuery", "SQL", "Python ETL design"])
-        },
-        {
-            "title": "Product Manager - SaaS Platforms",
-            "requirements": json.dumps(["Agile roadmap execution", "User research methodologies", "Jira", "Product launch experience", "Data-driven decision making"])
-        },
-        {
-            "title": "Junior Python Intern",
-            "requirements": json.dumps(["Python", "Basic SQL knowledge", "Git version control", "Eagerness to learn backend architectures"])
-        },
-        {
-            "title": "React Frontend Developer",
-            "requirements": json.dumps(["React", "JavaScript", "HTML/CSS", "Git", "State management library experience like Redux or Context API"])
-        },
-        {
-            "title": "Lead Cloud Infrastructure Architect",
-            "requirements": json.dumps(["Deep AWS expertise", "Kubernetes EKS provisioning", "Terraform", "Security & Identity access management (IAM)", "Enterprise scaling"])
-        },
-        {
-            "title": "Full Stack Engineer (Next.js & FastAPI)",
-            "requirements": json.dumps(["Next.js", "FastAPI", "PostgreSQL", "Docker", "RESTful API implementation"])
-        },
-        {
-            "title": "Data Analyst",
-            "requirements": json.dumps(["SQL proficiency", "Tableau or PowerBI dashboard building", "Python", "Pandas", "Statistical modeling basics"])
-        },
-        {
-            "title": "QA Automation Specialist",
-            "requirements": json.dumps(["TypeScript", "Playwright or Cypress automation framework", "CI/CD integration", "Manual exploratory testing basics"])
-        },
-        {
-            "title": "Database Administrator (PostgreSQL)",
-            "requirements": json.dumps(["PostgreSQL replication setups", "Query optimization and indexing strategies", "Backup and disaster recovery planning", "Linux administration"])
-        },
-        {
-            "title": "Site Reliability Engineer (SRE)",
-            "requirements": json.dumps(["Python or Go scripting", "Kubernetes orchestration", "Prometheus or Grafana monitoring suites", "Linux system internals"])
-        },
-        {
-            "title": "Golang Backend Developer",
-            "requirements": json.dumps(["Go programming language", "Microservices architecture", "gRPC and Protobuf networks", "Docker", "SQL"])
-        },
-        {
-            "title": "iOS Mobile Developer",
-            "requirements": json.dumps(["Swift", "SwiftUI", "iOS Core Data frameworks", "App Store deployment pipeline cycles", "Git"])
-        },
-        {
-            "title": "Technical Writer",
-            "requirements": json.dumps(["Markdown documentation layout", "API endpoint structure writing", "Git", "Strong technical translation skills"])
-        },
-        {
-            "title": "UI/UX Product Designer",
-            "requirements": json.dumps(["Figma expert level", "User flow mapping", "Prototyping", "A/B user testing support"])
-        },
-        {
-            "title": "Cybersecurity Risk Analyst",
-            "requirements": json.dumps(["ISO 27001 or SOC2 compliance frameworks", "Security risk assessment reporting", "Vulnerability scanning management"])
-        }
-    ]
+        print("Seeding jobs table with realistic market descriptions...")
+        
+        jobs_raw = [
+            {
+                "org_id": "default_org",
+                "title": "AI Automation Engineer",
+                "company": "Agents & Co.",
+                "location": "San Francisco, CA",
+                "type": "Full-time",
+                "salary": "$130k - $160k",
+                "desc": "Looking for an engineer to build production integrations using self-hosted automation workflows (n8n), Python gateways, and local LLMs (Qwen, Llama). Strong experience in SQL mapping and microservice structures required.",
+                "reqs": ["Python", "FastAPI", "n8n", "SQL", "LLMs"],
+                "url": "https://agentsandco.jobs/ai-auto-eng",
+                "source": "LinkedIn"
+            },
+            {
+                "org_id": "default_org",
+                "title": "Senior React Architect",
+                "company": "PixelCraft Studios",
+                "location": "New York, NY",
+                "type": "Full-time",
+                "salary": "$140k - $170k",
+                "desc": "We are seeking a React specialist to overhaul our client dashboard interfaces. Must be highly expert in modern Tailwind styling, React hooks, custom state machinery, and optimizing single-page application performance.",
+                "reqs": ["React", "TypeScript", "Tailwind CSS", "Next.js"],
+                "url": "https://pixelcraft.jobs/react-arch",
+                "source": "Indeed"
+            },
+            {
+                "org_id": "default_org",
+                "title": "DevOps & Infrastructure Specialist",
+                "company": "CloudScale Inc.",
+                "location": "Austin, TX",
+                "type": "Contract",
+                "salary": "$90 - $110 / hr",
+                "desc": "Urgently seeking a contractor to configure high-availability Kubernetes environments on AWS. Requires deep Terraform experience and solid scripting abilities in Python and Bash.",
+                "reqs": ["AWS", "Kubernetes", "Terraform", "Docker", "Python"],
+                "url": "https://cloudscale.jobs/devops-contract",
+                "source": "Direct"
+            },
+            {
+                "org_id": "default_org",
+                "title": "Data Pipeline Engineer",
+                "company": "Insight Analytics",
+                "location": "Chicago, IL",
+                "type": "Full-time",
+                "salary": "$115k - $135k",
+                "desc": "Help design our next-generation ETL architectures. Experience with Python, SQL databases (PostgreSQL/SQLite), and analytics warehouses (Snowflake, BigQuery) is highly critical.",
+                "reqs": ["Python", "SQL", "PostgreSQL", "Snowflake", "ETL"],
+                "url": "https://insightanalytics.jobs/data-eng",
+                "source": "LinkedIn"
+            },
+            {
+                "org_id": "default_org",
+                "title": "Technical Product Manager (AI Services)",
+                "company": "Nexus Systems",
+                "location": "Seattle, WA",
+                "type": "Full-time",
+                "salary": "$150k - $180k",
+                "desc": "Lead the discovery and development roadmap of our Generative AI integrations. Work closely with AI researchers and backend developers to deploy reliable NLP features for our global SaaS platform.",
+                "reqs": ["Product Management", "Agile", "Scrum", "Jira", "AI"],
+                "url": "https://nexussystems.jobs/tpm-ai",
+                "source": "Glassdoor"
+            }
+        ]
 
-    for j in jobs:
-        cursor.execute(
-            "INSERT INTO jobs (title, requirements) VALUES (?, ?)",
-            (j["title"], j["requirements"])
-        )
-    conn.commit()
-    print(f"Successfully seeded {len(jobs)} jobs.")
+        for job in jobs_raw:
+            # Calculate unique SHA-256 job fingerprint
+            j_fingerprint = calculate_job_fingerprint(
+                title=job["title"],
+                company=job["company"],
+                location=job["location"]
+            )
+            
+            cursor.execute("""
+                INSERT INTO jobs (
+                    organization_id, job_title, company, location, employment_type, 
+                    salary, job_description, requirements, job_url, job_fingerprint, 
+                    status, source, last_verified, date_found
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """, (
+                job["org_id"],
+                job["title"],
+                job["company"],
+                job["location"],
+                job["type"],
+                job["salary"],
+                job["desc"],
+                json.dumps(job["reqs"]),
+                job["url"],
+                j_fingerprint,
+                "Active",
+                job["source"],
+                datetime.now().isoformat(),
+                datetime.now().isoformat()
+            ))
 
-    # Show database summary
-    cursor.execute("SELECT COUNT(*) FROM candidates")
-    total_candidates = cursor.fetchone()[0]
-    cursor.execute("SELECT COUNT(*) FROM jobs")
-    total_jobs = cursor.fetchone()[0]
-    cursor.execute("SELECT COUNT(*) FROM evaluations")
-    total_evals = cursor.fetchone()[0]
-    
-    conn.close()
-    
-    print("\n" + "="*40)
-    print("DATABASE SEEDING COMPLETE!")
-    print(f"Total Candidates: {total_candidates}")
-    print(f"Total Jobs:       {total_jobs}")
-    print(f"Total Evaluations: {total_evals} (Clean Wipe)")
-    print("="*40)
+        conn.commit()
+        print("✅ Database tables successfully populated with fingerprint-backed test data!")
+
+    except Exception as e:
+        conn.rollback()
+        print(f"❌ Transaction rolled back due to error: {e}")
+        raise e
+    finally:
+        conn.close()
 
 if __name__ == "__main__":
-    recreate_and_seed_database()
+    seed_database()

@@ -1,283 +1,103 @@
-<<<<<<< HEAD
-# AI Job Agent
+Nexient AI Job Agent
 
-> **A local-first AI recruitment platform that evaluates candidates against job opportunities using a modular, database-driven architecture.**
-=======
-# 🤖 AI Job Agent
-The repository doesn't match the planned layout, yet
-> **A local-first AI recruitment automation platform built with FastAPI, n8n, SQLite, and a locally hosted Large Language Model.**
+A local-first, AI-powered recruitment automation engine. The system automatically ingests resumes, structures them into clean JSON schemas using a local Qwen2.5 model, computes profile state fingerprints, and matches candidates against target job descriptions inside a high-performance, multi-tenant SQLite database.
 
-
-
-
-
-\
->>>>>>> 78f4d97fe40e175d55617ed9f7b5686a2550b6d7
-
----
-
-## 🚀 Project Status
-
-**Current Milestone:** Evaluation Engine MVP Complete
-
-AI Job Agent has successfully evolved from a proof of concept into a fully database-driven candidate evaluation engine.
-
-Current capabilities include:
-
-* Dynamic candidate retrieval from SQLite
-* Dynamic job retrieval from SQLite
-* Batch candidate × job evaluation
-* AI-powered candidate scoring using a local Large Language Model (LLM)
-* Structured evaluation persistence
-* Duplicate evaluation prevention
-* Modular architecture designed for future autonomous job applications
-
----
-
-# ✨ Features
-
-## Current Features
-
-* ✅ SQLite-backed candidate and job database
-* ✅ FastAPI REST API
-* ✅ n8n workflow orchestration
-* ✅ Local LLM integration (currently Ollama)
-* ✅ OpenAI-compatible inference architecture
-* ✅ Structured JSON evaluation output
-* ✅ Batch processing
-* ✅ Duplicate protection
-* ✅ Evaluation history persistence
-* ✅ Swagger API documentation
-
----
-
-# 🏗 High-Level Architecture
-
-```text
-                    Candidates
-                         │
-                         ▼
-                   SQLite Database
-                         │
-                         ▼
-                     FastAPI API
-                         │
-                         ▼
-                n8n Evaluation Engine
-                         │
-                Build Evaluation Prompt
-                         │
-                         ▼
-              Local LLM (Ollama / Compatible)
-                         │
-               Structured JSON Evaluation
-                         │
-                         ▼
-                  FastAPI Persistence
-                         │
-                         ▼
-                   SQLite Evaluations
-```
-
-The architecture is intentionally modular. Every component has a single responsibility, making it easy to replace or extend individual services without redesigning the system.
-
----
-
-# ⚙ Technology Stack
-
-| Layer                          | Technology                                |
-| ------------------------------ | ----------------------------------------- |
-| Language                       | Python                                    |
-| Database                       | SQLite                                    |
-| API                            | FastAPI                                   |
-| Workflow Orchestration         | n8n                                       |
-| AI Inference                   | Ollama                                    |
-| Compatible Inference Providers | LM Studio, Ollama, OpenAI-compatible APIs |
-| Validation                     | Pydantic                                  |
-| Version Control                | Git & GitHub                              |
-
----
-
-# 📂 Repository Structure
-
-```text
-AI-Job-Agent/
+🚀 Quick Start Guide
 
-├── database/          SQLite databases
-├── docker/            Docker Compose & n8n configuration
-├── docs/              Project documentation
-├── logs/              Runtime logs
-├── output/            Generated outputs
-├── prompts/           Prompt templates
-├── resumes/           Candidate resumes
-├── scripts/           FastAPI, database helpers, seed scripts
-├── tests/             Test suite
-├── workflows/         n8n workflow exports
+1. Installation & Environment Setup
 
-README.md
-ARCHITECTURE.md
-CHANGELOG.md
-COMMANDS.md
-schema.sql
-requirements.txt
-```
+Clone the project and install all required system dependencies:
 
----
+# Clone the repository (or run from your workspace directory)
+cd C:\AI-Job-Agent
 
-# 🔄 Evaluation Engine
+# Install required Python packages
+pip install -r requirements.txt
 
-The Evaluation Engine compares every candidate against every selected job.
 
-Current workflow:
+2. Set Up the SQLite Database
 
-```text
-SQLite
-    │
-    ▼
-Retrieve Candidates
-    │
-Retrieve Jobs
-    │
-Multiplex Merge
-    │
-Build Prompt
-    │
-Local LLM
-    │
-Parse JSON
-    │
-Save Evaluation
-    │
-SQLite
-```
+Ensure your SQLite database is properly created, seeded, and migrated:
 
-This design allows the platform to evaluate multiple candidates against multiple jobs in a single workflow execution.
+# Seed the initial database tables and realistic profiles
+python scripts/seed_database.py
 
----
+# Confirm schema integrity
+python scripts/inspect_db.py
 
-# 📊 Performance
 
-Current benchmark:
+3. Run the Backend API Gateway
 
-| Metric             | Value         |
-| ------------------ | ------------- |
-| Candidates         | 5             |
-| Jobs               | 15            |
-| Evaluations        | 75            |
-| Runtime            | 4 min 5 sec   |
-| Average Evaluation | ~3.27 seconds |
+Start the local FastAPI instance on port 8000:
 
-These figures represent local execution using Ollama on consumer hardware. 
+python -m uvicorn scripts.api:app --reload --host 127.0.0.1 --port 8000
 
----
 
-# 🎯 Design Principles
+Interactive API Documentation (Swagger): Visit http://127.0.0.1:8000/docs to upload resumes or trigger endpoints interactively.
 
-AI Job Agent follows several core architectural principles:
+4. Running Local LLM (Ollama)
 
-* Local-first development
-* API-first communication
-* Database-driven workflows
-* Modular services
-* LLM provider agnostic
-* Human approval before automation
-* Replaceable components
-* Incremental evolution
+Ensure your local Ollama instance is running and has the optimized model downloaded:
 
-These principles allow the platform to grow without major architectural redesign.
+ollama run qwen2.5:7b
 
----
 
-# 🛣 Roadmap
+📂 Project Architecture Overview
 
-## Phase 1 — Evaluation Engine ✅
+├── database/                    # Database storage
+│   └── job_agent.db             # SQLite central file (WAL Mode enabled)
+├── docs/                        # Architectural specifications and guides
+│   ├── architecture.md          # Visual components layout & operational flows
+│   ├── project_todo_list.md     # Phase backlog tracking
+│   └── ...                      # ADR documents, scaling strategies
+├── resumes/                     # Local resume sandbox testing folder
+├── scripts/                     # Python scripts package
+│   ├── __init__.py              # Package initializer
+│   ├── api.py                   # FastAPI server gateways
+│   ├── hashing_utils.py         # SHA-256 state tracking fingerprint generator
+│   ├── resume_parser.py         # PyPDF / DOCX layout extraction and Ollama logic
+│   ├── save_candidate.py        # Database identity resolution write rules
+│   ├── save_evaluation.py       # Evaluation write gates and duplicate guards
+│   ├── seed_database.py         # Structural seeder script
+│   └── ...                      # Endpoint and parsing test runners
+├── workflows/                   # n8n workflow pipeline configurations
+├── requirements.txt             # Project library requirements
+└── schema.sql                   # Database table definitions
 
-* Candidate database
-* Job database
-* AI evaluation
-* Evaluation persistence
-* Batch processing
 
----
+🧪 Integration Testing Suite
 
-## Phase 2 — Job Discovery
+We maintain defensive automated tests to verify the integrity of our APIs, database operations, and LLM extractions.
 
-* Automated job ingestion
-* Job normalization
-* Scheduled imports
-* Duplicate job detection
+Test 1: API Endpoint Coverage
 
----
+Tests all GET routes and ensures the /save-evaluation idempotency duplicate lock is functional:
 
-## Phase 3 — Candidate Intelligence
+python scripts/test_api_endpoints.py
 
-* Resume parsing
-* Resume ranking
-* Resume selection
-* Candidate matching improvements
 
----
+Test 2: Local Resume Parser Sandbox
 
-## Phase 4 — Autonomous Applications
+Tests PDF/DOCX layout parsing and Qwen2.5 extraction on local disk files without involving the network:
 
-* Tailored resume generation
-* Cover letter generation
-* Human approval workflow
-* Automated application submission
+python scripts/test_resume_parser.py
 
----
 
-## Phase 5 — Learning System
+Test 3: API Ingestion Pipeline Upload
 
-* Application tracking
-* Interview tracking
-* Outcome analysis
-* Feedback-driven ranking improvements
+Simulates a real multi-part HTTP upload to /candidates/import to verify layout-to-database integrity:
 
----
+python scripts/test_pdf_upload.py
 
-# 🌍 Long-Term Vision
 
-The current platform evaluates candidates against job opportunities.
+🛠️ Core Technologies
 
-The long-term objective is an autonomous AI recruitment platform capable of:
+Framework: FastAPI, Pydantic, Uvicorn
 
-* Discovering opportunities
-* Ranking jobs by candidate fit
-* Selecting the best resume
-* Generating tailored cover letters
-* Applying automatically
-* Tracking application progress
-* Learning from historical outcomes
+Database: SQLite3 (Write-Ahead Logging mode)
 
-The architecture has been intentionally designed to support this evolution through modular components, allowing additional capabilities to be introduced without major structural changes.
+Local Inference: Ollama (Qwen2.5-7B)
 
----
+Workflow Engine: n8n (Multiplex/Cross-join matching loop)
 
-# 🚀 Getting Started
-
-1. Start Docker Desktop.
-2. Launch the FastAPI server.
-3. Start the local LLM provider (currently Ollama).
-4. Start n8n.
-5. Execute the evaluation workflow.
-
-Detailed startup commands are documented in **COMMANDS.md**.
-
----
-
-# 📄 Documentation
-
-* **ARCHITECTURE.md** — System architecture and design decisions
-* **COMMANDS.md** — Daily development commands and operational guide
-* **CHANGELOG.md** — Project history and milestones
-
----
-
-# 🤝 Project Philosophy
-
-AI Job Agent is intentionally designed as a collection of loosely coupled services.
-
-Each subsystem communicates through well-defined interfaces, allowing workflow orchestration, AI inference, storage, and future automation modules to evolve independently while maintaining a stable overall architecture.
-
-This approach prioritizes maintainability, flexibility, and long-term scalability over tightly coupled implementations.
+File Handling: pypdf, python-docx
